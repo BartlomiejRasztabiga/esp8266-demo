@@ -1,9 +1,14 @@
 #include <Arduino.h>
+#include <ESPAsyncWebServer.h>
 #include "Adafruit_Sensor.h"
 #include "DHT.h"
 
+#include "wifi.h"
+
 #define DHTTYPE DHT11
 #define DHTPIN D1
+
+AsyncWebServer server(80);
 
 DHT dht(DHTPIN, DHTTYPE);
 
@@ -22,6 +27,27 @@ void setup()
   pinMode(DHTPIN, INPUT);
 
   dht.begin();
+
+  // Connect to Wi-Fi
+  WiFi.begin(ssid, password);
+  Serial.println("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(1000);
+    Serial.println(".");
+  }
+
+  // Print ESP8266 Local IP Address
+  Serial.println(WiFi.localIP());
+
+  server.on("/temperature", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send_P(200, "text/plain", String(t).c_str());
+  });
+  server.on("/humidity", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send_P(200, "text/plain", String(h).c_str());
+  });
+
+  server.begin();
 }
 
 void loop()
