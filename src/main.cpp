@@ -1,33 +1,20 @@
 #include <Arduino.h>
-#include <ESPAsyncWebServer.h>
-#include "Adafruit_Sensor.h"
-#include "DHT.h"
+#include <ESP8266WiFi.h>
+#include <Wire.h>
+#include "SSD1306Wire.h"
 
 #include "wifi.h"
 
-#define DHTTYPE DHT11
-#define DHTPIN D1
+SSD1306Wire display(0x3c, SDA, SCL, GEOMETRY_128_32);
+long startMillis = millis();
+long pausedMillis = 0;
+String activity = "PZSP1";
+int BUTTON_PIN = D3;
 
-AsyncWebServer server(80);
+bool paused = false;
 
-DHT dht(DHTPIN, DHTTYPE);
-
-float t = 0.0;
-float h = 0.0;
-
-unsigned long previousMillis = 0;
-
-const long interval = 10000;
-
-void setup()
+void connectToWifi()
 {
-  Serial.begin(115200);
-  delay(100);
-
-  pinMode(DHTPIN, INPUT);
-
-  dht.begin();
-
   // Connect to Wi-Fi
   WiFi.begin(ssid, password);
   Serial.println("Connecting to WiFi");
@@ -39,47 +26,64 @@ void setup()
 
   // Print ESP8266 Local IP Address
   Serial.println(WiFi.localIP());
+}
 
-  server.on("/temperature", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send_P(200, "text/plain", String(t).c_str());
-  });
-  server.on("/humidity", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send_P(200, "text/plain", String(h).c_str());
-  });
+int returnSeconds(long millis)
+{
+  return millis / 1000;
+}
 
-  server.begin();
+void setup()
+{
+  Serial.begin(115200);
+  delay(100);
+
+  pinMode(BUTTON_PIN, INPUT);
+
+  connectToWifi();
+
+  display.init();
+}
+
+int buttonPressed(uint8_t button)
+{
+  static uint16_t lastStates = 0;
+  uint8_t state = digitalRead(button);
+  if (state != ((lastStates >> button) & 1))
+  {
+    lastStates ^= 1 << button;
+    return state == HIGH;
+  }
+  return false;
 }
 
 void loop()
 {
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= interval)
+  if (buttonPressed(BUTTON_PIN))
   {
-    // save the last time you updated the DHT values
-    previousMillis = currentMillis;
-    // Read temperature as Celsius (the default)
-    float newT = dht.readTemperature(false);
-    // if temperature read failed, don't change t value
-    if (isnan(newT))
+    paused = !paused;
+    if (paused)
     {
-      Serial.println("Failed to read from DHT sensor!");
+      pausedMillis = millis();
     }
-    else
-    {
-      t = newT;
-      Serial.println(t);
-    }
-    // Read Humidity
-    float newH = dht.readHumidity();
-    // if humidity read failed, don't change h value
-    if (isnan(newH))
-    {
-      Serial.println("Failed to read from DHT sensor!");
-    }
-    else
-    {
-      h = newH;
-      Serial.println(h);
-    }
+
+    Serial.println("paused " + String(paused));
   }
+
+  if (!paused)
+  {
+    long seconds = returnSeconds(millis() - startMillis);
+
+    display.clear();
+    display.drawString(0, 0, "Aktualna aktywnosc:");
+    display.drawString(0, 8, activity);
+    display.drawString(0, 16, "Czas trwania: " + String(seconds) + String("s"));
+    display.display();
+  }
+  else
+  {
+    startMillis += millis() - pausedMillis;
+  }
+
+  delay(100);
 }
